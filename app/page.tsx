@@ -257,7 +257,7 @@ export default function HiveTicketTracker() {
               <div className="p-2 bg-emerald-500 rounded-xl shadow-lg shadow-emerald-500/20">
                 <Database className="w-8 h-8 text-white" />
               </div>
-              Google Sheets Tracker
+              Ticket Manager To Excel
             </h1>
             <p className="text-neutral-400 mt-2 text-lg">
               Synchronizing continuously with your Cloud Database ☁️
