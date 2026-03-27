@@ -185,7 +185,7 @@ export default function HiveTicketTracker() {
           </div>
           <div className="mt-8 flex flex-col items-center gap-4">
             <h1 className="text-2xl font-bold text-white tracking-widest uppercase">
-              HIVE TRACKER
+              Ticket Manager
             </h1>
             <div className="flex items-center gap-2">
               <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin" />
