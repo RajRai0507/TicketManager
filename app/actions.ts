@@ -24,7 +24,7 @@ export interface Ticket {
   title: string;
   date: string;
   timeTaken: string;
-  shift: string;
+  shift: string[];
 }
 
 export async function getTickets(): Promise<Ticket[]> {
@@ -52,7 +52,8 @@ export async function getTickets(): Promise<Ticket[]> {
       title: row[1] || "",
       date: row[2] || "",
       timeTaken: row[3] || "",
-      shift: row[4] || "",
+      // Support legacy single-value shift and new multi-value stored as "A / B"
+      shift: row[4] ? row[4].split(" / ").map((s: string) => s.trim()).filter(Boolean) : [],
     })).filter((t: Ticket) => t.id || t.title);
   } catch (error) {
     console.error("Error reading from Google Sheets:", error);
@@ -74,7 +75,7 @@ export async function addTicket(ticket: Ticket) {
       valueInputOption: "USER_ENTERED",
       requestBody: {
         values: [
-          [ticket.id, ticket.title, ticket.date, ticket.timeTaken, ticket.shift]
+          [ticket.id, ticket.title, ticket.date, ticket.timeTaken, Array.isArray(ticket.shift) ? ticket.shift.join(" / ") : ticket.shift]
         ],
       },
     });

@@ -7,7 +7,7 @@ import { getTickets, addTicket, removeTicket, Ticket, getSheetUrl } from "./acti
 
 export default function HiveTicketTracker() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [newTicket, setNewTicket] = useState({ id: "", title: "", date: "", timeTaken: "", shift: "First Half" });
+  const [newTicket, setNewTicket] = useState<{ id: string; title: string; date: string; timeTaken: string; shift: string[] }>({ id: "", title: "", date: "", timeTaken: "", shift: ["First Half"] });
   const [timeValue, setTimeValue] = useState("");
   const [timeUnit, setTimeUnit] = useState("Hours");
   const [isLoading, setIsLoading] = useState(true);
@@ -137,7 +137,7 @@ export default function HiveTicketTracker() {
       // Re-fetch to ensure sync with Google Sheets (since appending goes to the bottom)
       const data = await getTickets();
       setTickets(data);
-      setNewTicket({ id: "", title: "", date: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split("T")[0], timeTaken: "", shift: "First Half" });
+      setNewTicket({ id: "", title: "", date: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split("T")[0], timeTaken: "", shift: ["First Half"] });
       setTimeValue("");
       toast.success("Ticket added successfully!", { id: toastId });
     } else {
@@ -407,6 +407,7 @@ export default function HiveTicketTracker() {
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-neutral-300 flex items-center gap-1.5">
                   <RefreshCw className="w-4 h-4 text-neutral-500" /> Shift Period
+                  <span className="ml-auto text-[10px] text-neutral-500 font-normal">(select multiple)</span>
                 </label>
                 <div className="relative" ref={shiftRef}>
                   <button
@@ -414,25 +415,45 @@ export default function HiveTicketTracker() {
                     onClick={() => setIsShiftOpen(!isShiftOpen)}
                     className="w-full flex items-center justify-between bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all cursor-pointer text-left"
                   >
-                    <span className="text-sm">{newTicket.shift}</span>
-                    <ChevronDown className={`w-4 h-4 text-neutral-500 transition-transform duration-200 ${isShiftOpen ? 'rotate-180' : ''}`} />
+                    <span className="text-sm truncate pr-2">
+                      {newTicket.shift.length === 0
+                        ? <span className="text-neutral-600">Select shifts...</span>
+                        : newTicket.shift.join(" + ")}
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-neutral-500 shrink-0 transition-transform duration-200 ${isShiftOpen ? 'rotate-180' : ''}`} />
                   </button>
 
                   {isShiftOpen && (
                     <div className="absolute top-full left-0 w-full mt-2 bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden shadow-2xl z-20 backdrop-blur-xl animate-in fade-in zoom-in duration-200">
-                      {["First Half", "Second Half", "Night Shift"].map((shift) => (
-                        <button
-                          key={shift}
-                          type="button"
-                          onClick={() => {
-                            setNewTicket({...newTicket, shift});
-                            setIsShiftOpen(false);
-                          }}
-                          className={`w-full px-4 py-3 text-sm text-left hover:bg-emerald-500/10 hover:text-emerald-400 transition-colors ${newTicket.shift === shift ? 'text-emerald-400 bg-emerald-500/5' : 'text-neutral-400'}`}
-                        >
-                          {shift}
-                        </button>
-                      ))}
+                      {["First Half", "Second Half", "Night Shift", "Off Shift"].map((shift) => {
+                        const isSelected = newTicket.shift.includes(shift);
+                        return (
+                          <button
+                            key={shift}
+                            type="button"
+                            onClick={() => {
+                              const updated = isSelected
+                                ? newTicket.shift.filter((s) => s !== shift)
+                                : [...newTicket.shift, shift];
+                              setNewTicket({ ...newTicket, shift: updated });
+                            }}
+                            className={`w-full px-4 py-3 text-sm text-left flex items-center gap-3 hover:bg-emerald-500/10 hover:text-emerald-400 transition-colors ${
+                              isSelected ? 'text-emerald-400 bg-emerald-500/5' : 'text-neutral-400'
+                            }`}
+                          >
+                            <span className={`w-4 h-4 rounded shrink-0 flex items-center justify-center border transition-colors ${
+                              isSelected ? 'bg-emerald-500 border-emerald-500' : 'border-neutral-600'
+                            }`}>
+                              {isSelected && (
+                                <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="none">
+                                  <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              )}
+                            </span>
+                            {shift}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -507,13 +528,22 @@ export default function HiveTicketTracker() {
                           {ticket.timeTaken || '-'}
                         </td>
                         <td className="py-4 px-4 text-neutral-400 text-sm">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-wider whitespace-nowrap ${
-                            ticket.shift === 'First Half' ? 'bg-blue-900/30 text-blue-400 border border-blue-800/50' :
-                            ticket.shift === 'Second Half' ? 'bg-purple-900/30 text-purple-400 border border-purple-800/50' :
-                            'bg-amber-900/30 text-amber-400 border border-amber-800/50'
-                          }`}>
-                            {ticket.shift || '-'}
-                          </span>
+                          <div className="flex flex-wrap gap-1">
+                            {(Array.isArray(ticket.shift)
+                              ? ticket.shift
+                              : (ticket.shift ? [ticket.shift] : []))
+                              .map((s: string) => (
+                                <span key={s} className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${
+                                  s === 'First Half'  ? 'bg-blue-900/30 text-blue-400 border border-blue-800/50' :
+                                  s === 'Second Half' ? 'bg-purple-900/30 text-purple-400 border border-purple-800/50' :
+                                  s === 'Off Shift'   ? 'bg-neutral-800 text-neutral-400 border border-neutral-700' :
+                                  'bg-amber-900/30 text-amber-400 border border-amber-800/50'
+                                }`}>
+                                  {s}
+                                </span>
+                              ))}
+                            {(!ticket.shift || (Array.isArray(ticket.shift) && ticket.shift.length === 0)) && <span className="text-neutral-600">-</span>}
+                          </div>
                         </td>
                         <td className="py-4 px-4 text-right">
                           <button
