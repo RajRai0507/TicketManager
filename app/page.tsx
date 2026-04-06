@@ -274,7 +274,7 @@ export default function HiveTicketTracker() {
               <Lock className="w-5 h-5 text-emerald-400" />
               Security Check
             </h3>
-            <p className="text-neutral-400 text-sm mb-6">{pinModal.message}</p>
+            <p className="text-neutral-400 text-sm mb-8">{pinModal.message}</p>
             
             <form onSubmit={handlePinSubmit} className="space-y-4">
               <input
@@ -484,7 +484,7 @@ export default function HiveTicketTracker() {
             </h2>
             
             <form onSubmit={handleAddTicket} className="space-y-5">
-              <div className="space-y-2">
+              <div className="space-y-4">
                 <label className="text-sm font-semibold text-neutral-300 flex items-center gap-1.5">
                   <Hash className="w-4 h-4 text-neutral-500" /> Ticket ID
                 </label>
@@ -498,7 +498,7 @@ export default function HiveTicketTracker() {
                 />
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-4">
                 <label className="text-sm font-semibold text-neutral-300 flex items-center gap-1.5">
                   <Type className="w-4 h-4 text-neutral-500" /> Task Title
                 </label>
@@ -512,7 +512,7 @@ export default function HiveTicketTracker() {
                 />
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-4">
                 <label className="text-sm font-semibold text-neutral-300 flex items-center gap-1.5">
                   <Calendar className="w-4 h-4 text-neutral-500" /> Date
                 </label>
@@ -525,7 +525,7 @@ export default function HiveTicketTracker() {
                 />
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-4">
                 <label className="text-sm font-semibold text-neutral-300 flex items-center gap-1.5">
                   <Clock className="w-4 h-4 text-neutral-500" /> Time Taken
                 </label>
@@ -633,7 +633,7 @@ export default function HiveTicketTracker() {
               <button
                 type="submit"
                 disabled={isSaving || !newTicket.id.trim() || !newTicket.title.trim() || !newTicket.date}
-                className="w-full mt-4 bg-white text-black hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed font-bold py-3 px-4 flex items-center justify-center gap-2 rounded-xl transition-all cursor-pointer"
+                className="w-full mt-11 bg-white text-black hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed font-bold py-3 px-4 flex items-center justify-center gap-2 rounded-xl transition-all cursor-pointer"
               >
                 {isSaving ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
                 {isSaving ? "Syncing..." : "Add & Sync to Cloud"}
