@@ -6,12 +6,12 @@ import { google } from "googleapis";
 const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
 const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
 const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID;
-
 const auth = new google.auth.GoogleAuth({
   credentials: {
     client_email: GOOGLE_CLIENT_EMAIL,
     private_key: GOOGLE_PRIVATE_KEY,
   },
+
   scopes: [
     "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/drive.file",
@@ -38,6 +38,7 @@ export interface Ticket {
   timeTaken: string;
   shift: string[];
   textColor?: string;
+  project?: string;
 }
 
 export async function getTickets(): Promise<Ticket[]> {
@@ -49,10 +50,10 @@ export async function getTickets(): Promise<Ticket[]> {
 
     const sheets = google.sheets({ version: "v4", auth });
     
-    // We assume the sheet is called "Sheet1" and read columns A to F
+    // We assume the sheet is called "Sheet1" and read columns A to G
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: GOOGLE_SHEET_ID,
-      range: "Sheet1!A2:F", // Skip header row A1:F1
+      range: "Sheet1!A2:G", // Skip header row A1:G1
     });
 
     const rows = response.data.values;
@@ -68,9 +69,13 @@ export async function getTickets(): Promise<Ticket[]> {
       // Support legacy single-value shift and new multi-value stored as "A / B"
       shift: row[4] ? row[4].split(" / ").map((s: string) => s.trim()).filter(Boolean) : [],
       textColor: row[5] || "",
+      project: row[6] || "",
     })).filter((t: Ticket) => t.id || t.title);
   } catch (error) {
-    console.error("Error reading from Google Sheets:", error);
+    console.error(
+      "[getTickets] FAILED:",
+      error instanceof Error ? error.message : String(error),
+    );
     return [];
   }
 }
@@ -85,11 +90,11 @@ export async function addTicket(ticket: Ticket) {
     
     const appendResponse = await sheets.spreadsheets.values.append({
       spreadsheetId: GOOGLE_SHEET_ID,
-      range: "Sheet1!A:F",
+      range: "Sheet1!A:G",
       valueInputOption: "USER_ENTERED",
       requestBody: {
         values: [
-          [ticket.id, ticket.title, ticket.date, ticket.timeTaken, Array.isArray(ticket.shift) ? ticket.shift.join(" / ") : ticket.shift, ticket.textColor || ""]
+          [ticket.id, ticket.title, ticket.date, ticket.timeTaken, Array.isArray(ticket.shift) ? ticket.shift.join(" / ") : ticket.shift, ticket.textColor || "", ticket.project || ""]
         ],
       },
     });
@@ -153,8 +158,9 @@ export async function addTicket(ticket: Ticket) {
 
     return { success: true };
   } catch (err) {
-    console.error("Failed to append to Google Sheets:", err);
-    return { success: false };
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[addTicket] FAILED:", message);
+    return { success: false, error: message };
   }
 }
 
@@ -189,8 +195,9 @@ export async function removeTicket(indexToRemove: number) {
 
      return { success: true };
    } catch (err) {
-     console.error("Failed to delete from Google Sheets:", err);
-     return { success: false };
+     const message = err instanceof Error ? err.message : String(err);
+     console.error("[removeTicket] FAILED:", message);
+     return { success: false, error: message };
    }
 }
 

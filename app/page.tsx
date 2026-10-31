@@ -19,6 +19,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Palette,
+  ClipboardList,
+  Copy,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -38,6 +41,7 @@ export default function HiveTicketTracker() {
     timeTaken: string;
     shift: string[];
     textColor: string;
+    project: string;
   }>({
     id: "",
     title: "",
@@ -45,7 +49,16 @@ export default function HiveTicketTracker() {
     timeTaken: "",
     shift: ["First Half"],
     textColor: "",
+    project: "",
   });
+  const PROJECTS = [
+    "Chile",
+    "Brazil",
+    "Mexico",
+    "Argentina",
+    "TokenSystem",
+    "Paraguay",
+  ];
   const [timeValue, setTimeValue] = useState("");
   const [timeUnit, setTimeUnit] = useState("Hours");
   const [isLoading, setIsLoading] = useState(true);
@@ -110,6 +123,61 @@ export default function HiveTicketTracker() {
     index: null,
     ticket: null,
   });
+
+  // EOD report state
+  const HIVE_WORKSPACE_URL =
+    "https://app.hive.com/workspace/ihXR9ZtXsSD5WYKk4?actionId=";
+  const [eodOpen, setEodOpen] = useState(false);
+  const [eodDate, setEodDate] = useState("");
+  const [eodText, setEodText] = useState("");
+
+  const buildEodText = (date: string) => {
+    if (!date) return "";
+    const [y, m, d] = date.split("-").map(Number);
+    const label = new Date(y, m - 1, d).toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    // Group the day's tickets by project, in order of first appearance
+    const groups = new Map<string, string[]>();
+    tickets
+      .filter((t) => t.date === date)
+      .forEach((t) => {
+        const project = t.project || "Other";
+        const actionId = t.id.trim().replace(/^id\s*/i, "");
+        const lines = groups.get(project) ?? [];
+        lines.push(`• ${t.title}\n  ${HIVE_WORKSPACE_URL}${actionId}`);
+        groups.set(project, lines);
+      });
+    const sections = Array.from(groups, ([project, lines]) =>
+      [`Worked on ${project}`, ...lines].join("\n"),
+    );
+    return `EOD ${label}\n\n${sections.join("\n\n")}`;
+  };
+
+  const openEod = () => {
+    const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+      .toISOString()
+      .split("T")[0];
+    setEodDate(today);
+    setEodText(buildEodText(today));
+    setEodOpen(true);
+  };
+
+  const handleEodDateChange = (date: string) => {
+    setEodDate(date);
+    setEodText(buildEodText(date));
+  };
+
+  const handleCopyEod = async () => {
+    try {
+      await navigator.clipboard.writeText(eodText);
+      toast.success("EOD copied to clipboard!");
+    } catch {
+      toast.error("Failed to copy EOD!");
+    }
+  };
 
   const requestPin = (message: string): Promise<string | null> => {
     return new Promise((resolve) => {
@@ -205,15 +273,22 @@ export default function HiveTicketTracker() {
 
   const handleAddTicket = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTicket.id.trim() || !newTicket.title.trim() || !newTicket.date)
+    if (
+      !newTicket.id.trim() ||
+      !newTicket.title.trim() ||
+      !newTicket.date ||
+      !newTicket.project
+    ) {
+      if (!newTicket.project) toast.error("Please select a project!");
       return;
+    }
 
     if (isAuthEnabled) {
       const pin = await requestPin(
         "Authentication required. Enter 4-digit PIN:",
       );
       if (pin !== STATIC_PIN) {
-        if (pin !== null) toast.error("Incorrect PIN! Ticket not added.");
+        if (pin != null) toast.error("Incorrect PIN! Ticket not added.");
         return;
       }
     }
@@ -242,11 +317,13 @@ export default function HiveTicketTracker() {
         timeTaken: "",
         shift: ["First Half"],
         textColor: "",
+        project: "",
       });
       setTimeValue("");
+      setCurrentPage(1);
       toast.success("Ticket added successfully!", { id: toastId });
     } else {
-      toast.error("Failed to save to Google Sheets! Check .env credentials.", {
+      toast.error(`Failed to save: ${result.error ?? "unknown error"}`, {
         id: toastId,
       });
       setIsConfigured(false);
@@ -293,13 +370,17 @@ export default function HiveTicketTracker() {
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editModal.ticket || editModal.index === null) return;
+    if (!editModal.ticket.project) {
+      toast.error("Please select a project!");
+      return;
+    }
 
     if (isAuthEnabled) {
       const pin = await requestPin(
         `Authentication required. Enter 4-digit PIN to edit Ticket [${editModal.ticket.id}]:`,
       );
       if (pin !== STATIC_PIN) {
-        if (pin !== null) toast.error("Incorrect PIN! Ticket not edited.");
+        if (pin != null) toast.error("Incorrect PIN! Ticket not edited.");
         return;
       }
     }
@@ -325,10 +406,14 @@ export default function HiveTicketTracker() {
   const totalPages = Math.ceil(tickets.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedTickets = tickets.slice(startIndex, endIndex);
+  // Newest first, but keep each ticket's original sheet index for edit/delete
+  const paginatedTickets = tickets
+    .map((ticket, sheetIdx) => ({ ticket, sheetIdx }))
+    .reverse()
+    .slice(startIndex, endIndex);
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans p-6 md:p-12">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans p-4 sm:p-6 md:p-12 overflow-x-hidden">
 
       {/* ── App-Level Password Gate ── */}
       {!isAppAuthenticated && (
@@ -503,6 +588,72 @@ export default function HiveTicketTracker() {
         </div>
       )}
 
+      {eodOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-white">
+              <ClipboardList className="w-5 h-5 text-emerald-400" />
+              EOD Report
+            </h3>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-neutral-300 flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4 text-neutral-500" /> Date
+                </label>
+                <input
+                  type="date"
+                  value={eodDate}
+                  onChange={(e) => handleEodDateChange(e.target.value)}
+                  className="block w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all scheme-dark"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-neutral-300 flex items-center gap-1.5">
+                  <Edit2 className="w-4 h-4 text-neutral-500" /> Message
+                  <span className="ml-auto text-[10px] text-neutral-500 font-normal">
+                    (editable)
+                  </span>
+                </label>
+                <textarea
+                  value={eodText}
+                  onChange={(e) => setEodText(e.target.value)}
+                  rows={12}
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all resize-y"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEodOpen(false)}
+                  className="py-3 px-4 rounded-xl font-medium bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEodText(buildEodText(eodDate))}
+                  className="py-3 px-4 rounded-xl font-medium bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors cursor-pointer flex items-center gap-2"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Reset
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopyEod}
+                  className="flex-1 py-3 px-4 rounded-xl font-bold bg-emerald-600 text-white hover:bg-emerald-500 transition-colors shadow-lg shadow-emerald-600/20 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Copy className="w-4 h-4" />
+                  Copy
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {editModal.isOpen && editModal.ticket && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -644,6 +795,40 @@ export default function HiveTicketTracker() {
                 </div>
               </div>
 
+              {/* Project – Edit Modal */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-neutral-300 flex items-center gap-1.5">
+                  <Database className="w-4 h-4 text-neutral-500" /> Project
+                  <span className="ml-auto text-[10px] text-neutral-500 font-normal">
+                    (required)
+                  </span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {PROJECTS.map((project) => (
+                    <button
+                      key={project}
+                      type="button"
+                      onClick={() =>
+                        setEditModal({
+                          ...editModal,
+                          ticket: {
+                            ...editModal.ticket,
+                            project,
+                          } as Ticket,
+                        })
+                      }
+                      className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
+                        editModal.ticket?.project === project
+                          ? "bg-emerald-600 text-white"
+                          : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
+                      }`}
+                    >
+                      {project}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Text Color Picker – Edit Modal */}
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-neutral-300 flex items-center gap-1.5">
@@ -725,18 +910,18 @@ export default function HiveTicketTracker() {
         {/* Header */}
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-white flex items-center gap-3">
+            <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-white flex items-center gap-3">
               <div className="p-2 bg-emerald-500 rounded-xl shadow-lg shadow-emerald-500/20">
                 <Database className="w-8 h-8 text-white" />
               </div>
               Hey, it’s Ticket Manager Desk
             </h1>
-            <p className="text-neutral-400 mt-2 text-lg">
+            <p className="text-neutral-400 mt-2 text-base sm:text-lg">
               Synchronizing continuously with your Cloud Database ☁️
             </p>
           </div>
 
-          <div className="flex gap-3 items-center">
+          <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
             {isSaving && (
               <span className="text-sm font-medium text-emerald-400 flex items-center gap-2">
                 <RefreshCw className="w-4 h-4 animate-spin" /> Syncing...
@@ -754,6 +939,15 @@ export default function HiveTicketTracker() {
                 View Sheet
               </a>
             )}
+
+            <button
+              onClick={openEod}
+              className="px-4 py-2.5 flex items-center gap-2 rounded-xl font-medium text-sm transition-all border cursor-pointer bg-neutral-800 text-neutral-200 border-neutral-700 hover:bg-neutral-700"
+              title="Generate EOD report"
+            >
+              <ClipboardList className="w-4 h-4" />
+              EOD
+            </button>
 
             <button
               onClick={handleToggleAuth}
@@ -781,7 +975,7 @@ export default function HiveTicketTracker() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column: Form */}
-          <div className="lg:col-span-1 border border-neutral-800 bg-neutral-900/50 rounded-3xl p-6 shadow-xl backdrop-blur-sm h-fit sticky top-6">
+          <div className="min-w-0 lg:col-span-1 border border-neutral-800 bg-neutral-900/50 rounded-3xl p-6 shadow-xl backdrop-blur-sm h-fit sticky top-6">
             <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
               <Plus className="w-5 h-5 text-emerald-400" />
               Log New Ticket
@@ -980,6 +1174,37 @@ export default function HiveTicketTracker() {
                 </div>
               </div>
 
+              {/* Project */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-neutral-300 flex items-center gap-1.5">
+                  <Database className="w-4 h-4 text-neutral-500" /> Project
+                  <span className="ml-auto text-[10px] text-neutral-500 font-normal">
+                    (required)
+                  </span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {PROJECTS.map((project) => (
+                    <button
+                      key={project}
+                      type="button"
+                      onClick={() =>
+                        setNewTicket({
+                          ...newTicket,
+                          project,
+                        })
+                      }
+                      className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
+                        newTicket.project === project
+                          ? "bg-emerald-600 text-white"
+                          : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
+                      }`}
+                    >
+                      {project}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Text Color Picker */}
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-neutral-300 flex items-center gap-1.5">
@@ -1036,7 +1261,8 @@ export default function HiveTicketTracker() {
                   isSaving ||
                   !newTicket.id.trim() ||
                   !newTicket.title.trim() ||
-                  !newTicket.date
+                  !newTicket.date ||
+                  !newTicket.project
                 }
                 className="w-full mt-4 bg-white text-black hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed font-bold py-3 px-4 flex items-center justify-center gap-2 rounded-xl transition-all cursor-pointer"
               >
@@ -1051,7 +1277,7 @@ export default function HiveTicketTracker() {
           </div>
 
           {/* Right Column: List */}
-          <div className="lg:col-span-2 border border-neutral-800 bg-neutral-900/50 rounded-3xl shadow-xl backdrop-blur-sm min-h-[500px] flex flex-col overflow-hidden">
+          <div className="min-w-0 lg:col-span-2 border border-neutral-800 bg-neutral-900/50 rounded-3xl shadow-xl backdrop-blur-sm min-h-[500px] flex flex-col overflow-hidden">
             <div className="p-6 border-b border-neutral-800 flex items-center justify-between">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 Live Data Feed
@@ -1105,6 +1331,9 @@ export default function HiveTicketTracker() {
                         </th>
                         <th className="p-4 px-4 w-1/4">Task Title</th>
                         <th className="p-4 px-4 w-32 whitespace-nowrap">
+                          Project
+                        </th>
+                        <th className="p-4 px-4 w-32 whitespace-nowrap">
                           Date
                         </th>
                         <th className="p-4 px-4 w-32 whitespace-nowrap">
@@ -1117,8 +1346,8 @@ export default function HiveTicketTracker() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-neutral-800/50">
-                      {paginatedTickets.map((ticket, paginIdx) => {
-                        const actualIdx = startIndex + paginIdx;
+                      {paginatedTickets.map(({ ticket, sheetIdx }) => {
+                        const actualIdx = sheetIdx;
                         const rowColor = ticket.textColor || undefined;
                         return (
                           <tr
@@ -1138,6 +1367,15 @@ export default function HiveTicketTracker() {
                               style={rowColor ? { color: rowColor } : {}}
                             >
                               {ticket.title}
+                            </td>
+                            <td className="py-4 px-4 text-sm whitespace-nowrap">
+                              {ticket.project ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-900/30 text-emerald-400 border border-emerald-800/50">
+                                  {ticket.project}
+                                </span>
+                              ) : (
+                                <span className="text-neutral-600">-</span>
+                              )}
                             </td>
                             <td
                               className="py-4 px-4 text-sm whitespace-nowrap"
