@@ -123,8 +123,8 @@ export default function HiveTicketTracker() {
     index: null,
     ticket: null,
   });
-
-  // EOD report state
+// EOD report state
+  
   const HIVE_WORKSPACE_URL =
     "https://app.hive.com/workspace/ihXR9ZtXsSD5WYKk4?actionId=";
   const [eodOpen, setEodOpen] = useState(false);
