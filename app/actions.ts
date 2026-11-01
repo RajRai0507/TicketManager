@@ -68,8 +68,8 @@ export async function getTickets(): Promise<Ticket[]> {
       timeTaken: row[3] || "",
       // Support legacy single-value shift and new multi-value stored as "A / B"
       shift: row[4] ? row[4].split(" / ").map((s: string) => s.trim()).filter(Boolean) : [],
-      textColor: row[5] || "",
-      project: row[6] || "",
+      project: row[5] || "",
+      textColor: row[6] || "",
     })).filter((t: Ticket) => t.id || t.title);
   } catch (error) {
     console.error(
@@ -88,13 +88,22 @@ export async function addTicket(ticket: Ticket) {
 
     const sheets = google.sheets({ version: "v4", auth });
     
-    const appendResponse = await sheets.spreadsheets.values.append({
+    // Find the next empty row ourselves and write to exact cells A:G.
+    // values.append auto-detects a "table" and can start in the wrong column
+    // (e.g. G) when the header row doesn't line up with the data columns.
+    const existing = await sheets.spreadsheets.values.get({
       spreadsheetId: GOOGLE_SHEET_ID,
       range: "Sheet1!A:G",
+    });
+    const rowNumber = (existing.data.values?.length ?? 0) + 1;
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: GOOGLE_SHEET_ID,
+      range: `Sheet1!A${rowNumber}:G${rowNumber}`,
       valueInputOption: "USER_ENTERED",
       requestBody: {
         values: [
-          [ticket.id, ticket.title, ticket.date, ticket.timeTaken, Array.isArray(ticket.shift) ? ticket.shift.join(" / ") : ticket.shift, ticket.textColor || "", ticket.project || ""]
+          [ticket.id, ticket.title, ticket.date, ticket.timeTaken, Array.isArray(ticket.shift) ? ticket.shift.join(" / ") : ticket.shift, ticket.project || "", ticket.textColor || ""]
         ],
       },
     });
@@ -102,11 +111,7 @@ export async function addTicket(ticket: Ticket) {
     // Apply text color to the sheet row if a color was chosen
     if (ticket.textColor) {
       const rgb = hexToRgb(ticket.textColor);
-      const updatedRange = appendResponse.data.updates?.updatedRange; // e.g. "Sheet1!A39:F39"
-      if (rgb && updatedRange) {
-        // Extract row number from range string, e.g. "Sheet1!A39:F39" → 39
-        const rowMatch = updatedRange.match(/(\d+):(\d+)?[A-Z]?(\d+)?/);
-        const rowNumber = rowMatch ? parseInt(rowMatch[1]) : null;
+      if (rgb) {
         if (rowNumber) {
           const rowIndex = rowNumber - 1; // Convert to 0-based index
           await sheets.spreadsheets.batchUpdate({
@@ -114,14 +119,14 @@ export async function addTicket(ticket: Ticket) {
             requestBody: {
               requests: [
                 {
-                  // Apply chosen color to data columns A–E
+                  // Apply chosen color to data columns A–F
                   repeatCell: {
                     range: {
                       sheetId: 0,
                       startRowIndex: rowIndex,
                       endRowIndex: rowIndex + 1,
                       startColumnIndex: 0,
-                      endColumnIndex: 5, // Columns A–E
+                      endColumnIndex: 6, // Columns A–F
                     },
                     cell: {
                       userEnteredFormat: {
@@ -132,14 +137,14 @@ export async function addTicket(ticket: Ticket) {
                   },
                 },
                 {
-                  // Hide the hex code in column F by making text white (invisible)
+                  // Hide the hex code in column G by making text white (invisible)
                   repeatCell: {
                     range: {
                       sheetId: 0,
                       startRowIndex: rowIndex,
                       endRowIndex: rowIndex + 1,
-                      startColumnIndex: 5,
-                      endColumnIndex: 6, // Column F only
+                      startColumnIndex: 6,
+                      endColumnIndex: 7, // Column G only
                     },
                     cell: {
                       userEnteredFormat: {
